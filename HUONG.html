@@ -1,0 +1,1343 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>Hành Trình Trưởng Thành 18 - Đồ Thị Hàm Số Bậc 3</title>
+    
+    <!-- Tailwind CSS cho thiết kế UI hiện đại -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Three.js cho không gian hạt nghệ thuật -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <!-- MediaPipe cho nhận diện cử chỉ bàn tay -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background: radial-gradient(circle, #FFF1F2 0%, #FFE4E6 100%);
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+            user-select: none;
+            /* Hỗ trợ an toàn hiển thị cho các dòng màn hình tai thỏ, dynamic island */
+            padding-top: env(safe-area-inset-top);
+            padding-bottom: env(safe-area-inset-bottom);
+            padding-left: env(safe-area-inset-left);
+            padding-right: env(safe-area-inset-right);
+        }
+        #canvas-container {
+            width: 100%;
+            height: 100vh;
+            display: block;
+            touch-action: none; /* Ngăn chặn cuộn trang mặc định khi vuốt chạm WebGL */
+        }
+        @keyframes pulse-rose {
+            0%, 100% { transform: scale(1); box-shadow: 0 0 20px rgba(225, 29, 72, 0.4); }
+            50% { transform: scale(1.04); box-shadow: 0 0 35px rgba(225, 29, 72, 0.7); }
+        }
+        .pulse-btn {
+            animation: pulse-rose 2s infinite ease-in-out;
+        }
+        .glass-panel {
+            background: rgba(255, 241, 242, 0.88);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(225, 29, 72, 0.18);
+        }
+        .text-neon-rose {
+            text-shadow: 0 0 8px rgba(225, 29, 72, 0.4), 0 0 15px rgba(225, 29, 72, 0.2);
+        }
+        .custom-scroll::-webkit-scrollbar {
+            width: 4px;
+        }
+        .custom-scroll::-webkit-scrollbar-thumb {
+            background: rgba(225, 29, 72, 0.4);
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body class="text-rose-950">
+
+    <!-- Header Tiêu đề chính (Tối ưu khoảng cách đỉnh cho iPhone 16 Pro) -->
+    <div class="absolute top-10 md:top-6 left-4 md:left-6 z-50 pointer-events-none">
+        <h1 class="text-xl md:text-3xl font-black tracking-wider bg-gradient-to-r from-rose-700 via-pink-600 to-amber-600 bg-clip-text text-transparent drop-shadow-sm text-neon-rose">
+            ✨ SINH NHẬT TUỔI 18
+        </h1>
+        <p class="text-[10px] md:text-xs text-rose-600 font-bold tracking-widest mt-0.5">CHÚC MỪNG SINH NHẬT NÂU</p>
+    </div>
+
+    <!-- Trạng thái không gian hiện tại (Tự động ẩn trên màn hình quá bé) -->
+    <div class="absolute top-10 md:top-6 left-1/2 -translate-x-1/2 z-50 pointer-events-none text-center hidden sm:block">
+        <span class="text-[9px] md:text-[10px] uppercase tracking-widest text-rose-700 bg-rose-100/90 px-3 py-1 rounded-full border border-rose-200 font-bold shadow-sm">
+            KHÔNG GIAN
+        </span>
+        <h2 id="active-state-indicator" class="text-lg md:text-2xl font-black mt-1 text-rose-900 drop-shadow-sm tracking-wide">
+            🎂 BÁNH KEM SINH NHẬT
+        </h2>
+    </div>
+
+    <!-- Camera Preview góc phải (Nhỏ gọn hơn trên thiết bị di động) -->
+    <div class="absolute top-10 md:top-6 right-4 md:right-6 z-50 flex flex-col items-end space-y-2">
+        <div class="relative rounded-xl overflow-hidden border border-rose-300 shadow-lg shadow-rose-200/50 glass-panel p-1">
+            <video class="input_video hidden" style="display:none"></video>
+            <canvas id="camera-preview" class="w-20 h-15 md:w-32 md:h-24 rounded-lg bg-rose-50 object-cover" style="transform: scaleX(-1);"></canvas>
+            <div id="camera-badge" class="absolute bottom-1.5 left-1.5 px-1 py-0.5 rounded text-[7px] font-bold bg-white/95 text-rose-600 flex items-center gap-1 shadow-sm border border-rose-100">
+                <span id="camera-status-dot" class="w-1 h-1 rounded-full bg-rose-500 animate-ping"></span> <span id="camera-status-text">CAMERA TẮT</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- wishes overlay cho viết lời chúc -->
+    <div id="wishes-overlay" class="absolute inset-0 bg-rose-900/10 z-40 flex items-center justify-center p-4 pointer-events-none opacity-0 transition-opacity duration-500">
+        <div class="max-w-md w-full glass-panel rounded-3xl p-6 md:p-8 shadow-2xl pointer-events-auto border-2 border-rose-400/30 relative transform translate-y-4 transition-transform duration-500" id="wishes-card">
+            <div class="absolute -top-6 -right-6 w-16 h-16 bg-gradient-to-tr from-pink-400 to-rose-400 rounded-full blur-xl opacity-65"></div>
+            <div class="text-center mb-4">
+                <span class="text-3xl">💝</span>
+                <h3 class="text-xl font-extrabold text-rose-900 mt-1">Lời Chúc Tuổi 18 </h3>
+                <p class="text-xs text-rose-600 italic">Nhập trực tiếp vào ô bên dưới để viết lời ước nguyện nhé!</p>
+            </div>
+            
+            <div class="space-y-3 bg-white/60 p-4 rounded-2xl border border-rose-200/60 shadow-inner max-h-48 md:max-h-60 overflow-y-auto custom-scroll">
+                <textarea id="custom-wish-text" class="w-full h-32 md:h-40 bg-transparent text-rose-900 text-sm font-semibold leading-relaxed resize-none border-none focus:outline-none focus:ring-0" placeholder="Hãy viết những lời chúc ngọt ngào nhất tại đây..."></textarea>
+            </div>
+
+            <div class="mt-4 text-center">
+                <span class="text-[10px] text-rose-500 font-bold uppercase tracking-wider">🌟 Hãy tự tin vững bước vào tương lai rực rỡ 🌟</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bộ điều khiển thích ứng (Hỗ trợ hiển thị full-width sang trọng trên mobile và card góc trên desktop) -->
+    <div class="absolute bottom-6 left-4 right-4 sm:left-6 sm:right-auto z-50 sm:max-w-xs md:max-w-sm glass-panel rounded-2xl p-4 shadow-xl flex flex-col gap-2.5 border border-rose-200">
+        <div>
+            <h3 class="text-xs font-black uppercase text-rose-800 tracking-wider flex items-center gap-1">
+                <span>🪄</span> Hướng Dẫn
+            </h3>
+            <p class="text-[10px] md:text-[11px] text-rose-700 mt-0.5 leading-relaxed">
+                Nhấn các nút bấm hoặc <span class="hidden sm:inline">vẫy tay trước Webcam</span><span class="sm:hidden">vuốt trực tiếp lên màn hình</span>:
+            </p>
+        </div>
+
+        <div class="grid grid-cols-2 gap-2 pt-1.5 border-t border-rose-200">
+            <button onclick="setManualState('TREE')" id="btn-manual-tree" class="py-2.5 rounded-xl text-[11px] md:text-xs font-bold bg-rose-600 text-white shadow-md transition-all active:scale-95">
+                🎂 Bánh Kem 18
+            </button>
+            <button onclick="setManualState('HEART')" id="btn-manual-heart" class="py-2.5 rounded-xl text-[11px] md:text-xs font-bold bg-white border border-rose-200 text-rose-700 hover:bg-rose-100/50 transition-all active:scale-95">
+                💝 Lời Chúc 18
+            </button>
+            <button onclick="setManualState('EXPLODE')" id="btn-manual-explode" class="py-2.5 rounded-xl text-[11px] md:text-xs font-bold bg-white border border-rose-200 text-rose-700 hover:bg-rose-100/50 transition-all active:scale-95">
+                🛣️ Hành Trình 
+            </button>
+            <button onclick="setManualState('PHOTO')" id="btn-manual-photo" class="py-2.5 rounded-xl text-[11px] md:text-xs font-bold bg-white border border-rose-200 text-rose-700 hover:bg-rose-100/50 transition-all active:scale-95">
+                🖼️ Xem Ảnh Chi Tiết
+            </button>
+        </div>
+
+        <!-- Thanh kéo hành trình tuyến tính (Nút trượt lớn dễ vuốt trên di động) -->
+        <div id="timeline-slider-container" class="opacity-40 pointer-events-none transition-all flex flex-col gap-1 pt-1">
+            <div class="flex justify-between items-center text-[9px] md:text-[10px] text-rose-800 font-bold">
+                <span>Thuở Nhỏ 👶 (Hình 1)</span>
+                <span class="text-rose-600 sm:inline hidden">Trượt hành trình</span>
+                <span class="text-rose-600 sm:hidden">Vuốt ngang màn hình</span>
+                <span>Hiện Tại 🎓 (Hình 4)</span>
+            </div>
+            <input type="range" id="timeline-slider" min="0" max="1" step="0.01" value="0.0" oninput="handleSliderChange(this.value)" class="w-full h-2 accent-rose-600 cursor-pointer rounded-lg appearance-none bg-rose-200/50">
+        </div>
+
+        <div class="text-[9px] md:text-[10px] text-rose-600 flex justify-between items-center border-t border-rose-200/60 pt-2 font-medium">
+            <span>Chế độ: <strong id="control-mode-status" class="text-rose-800 font-bold">Cử Chỉ Nhạy Cao / Vuốt</strong></span>
+            <button onclick="toggleMusicVolume()" id="btn-mute" class="text-rose-700/90 hover:text-rose-800 transition-colors font-bold px-1 py-0.5">🔊 Nhạc Bật</button>
+        </div>
+    </div>
+
+    <!-- Start/Intro Overlay (Tối ưu hóa gọn gàng cho thiết bị di động để tránh cuộn trang) -->
+    <div id="start-overlay" class="absolute inset-0 bg-rose-50/98 z-[100] flex flex-col justify-center items-center p-4 md:p-6 text-center transition-opacity duration-500">
+        <div class="max-w-md w-full p-6 md:p-8 rounded-3xl glass-panel shadow-2xl border-2 border-rose-300 relative overflow-hidden">
+            <div class="absolute -top-12 -left-12 w-42 h-42 bg-pink-300/40 rounded-full blur-3xl"></div>
+            <div class="absolute -bottom-12 -right-12 w-42 h-42 bg-rose-300/40 rounded-full blur-3xl"></div>
+
+            <span class="text-4xl md:text-5xl block mb-3 animate-bounce">🎈</span>
+            <h2 class="text-2xl md:text-3xl font-extrabold tracking-tight text-rose-900 mb-1.5">Chào Đón Tuổi 18</h2>
+            <p class="text-rose-700 text-xs md:text-sm leading-relaxed mb-4 md:mb-6 font-medium">
+                Hãy dùng cử chỉ tay trước camera hoặc **vuốt trực tiếp lên màn hình để trượt hành trình!
+            </p>
+
+            <div class="space-y-2 md:space-y-3 text-left bg-white/70 p-3 md:p-4 rounded-2xl border border-rose-200 mb-5 md:mb-6 text-[11px] md:text-xs text-rose-800 font-semibold shadow-sm">
+                <div class="flex items-center gap-2">
+                    <span class="text-base">✊</span> <span><strong>Nắm tay (Fist):</strong> Bánh Kem</span>
+                </div>
+                <div class="flex items-center gap-2">
+                    <span class="text-base">🫶</span> <span><strong>Tạo hình trái tim (Heart):</strong> Lời Chúc</span>
+                </div>
+                <div class="flex items-center gap-2">
+                    <span class="text-base">🖐</span> <span><strong>Xoè bàn tay (Open):</strong> Hành trình</span>
+                </div>
+                <div class="flex items-center gap-2">
+                    <span class="text-base">👌</span> <span><strong>Nhúm ngón tay (Pinch):</strong> Bức ảnh</span>
+                </div>
+            </div>
+
+            <button id="btnStart" onclick="startSystem()" class="pulse-btn w-full py-3.5 px-6 rounded-2xl text-base md:text-lg font-extrabold bg-gradient-to-r from-rose-600 to-pink-500 hover:from-rose-500 hover:to-pink-400 text-white shadow-lg transition-all duration-300 transform active:scale-95">
+                BẮT ĐẦU BUỔI TIỆC 🎉
+            </button>
+            <p class="text-[9px] md:text-[10px] text-rose-500 mt-3 font-medium italic">Hiệu ứng pháo hoa cực đẹp nở rực rỡ khi khai mạc.</p>
+        </div>
+    </div>
+
+    <!-- Canvas chứa đồ họa WebGL -->
+    <div id="canvas-container"></div>
+
+    <script>
+        class BirthdayChimesSynth {
+            constructor() {
+                this.ctx = null;
+                this.isPlaying = false;
+                this.tempo = 115; // BPM
+                this.beatDuration = 60 / this.tempo;
+                this.timerId = null;
+                this.isMuted = false;
+
+                // Nốt nhạc bài Happy Birthday
+                this.notes = [
+                    { note: "C5", dur: 0.75 }, { note: "C5", dur: 0.25 }, { note: "D5", dur: 1 }, { note: "C5", dur: 1 }, { note: "F5", dur: 1 }, { note: "E5", dur: 2 },
+                    { note: "C5", dur: 0.75 }, { note: "C5", dur: 0.25 }, { note: "D5", dur: 1 }, { note: "C5", dur: 1 }, { note: "G5", dur: 1 }, { note: "F5", dur: 2 },
+                    { note: "C5", dur: 0.75 }, { note: "C5", dur: 0.25 }, { note: "C6", dur: 1 }, { note: "A5", dur: 1 }, { note: "F5", dur: 1 }, { note: "E5", dur: 1 }, { note: "D5", dur: 2 },
+                    { note: "A#5", dur: 0.75 }, { note: "A#5", dur: 0.25 }, { note: "A5", dur: 1 }, { note: "F5", dur: 1 }, { note: "G5", dur: 1 }, { note: "F5", dur: 3 }
+                ];
+                
+                this.frequencies = {
+                    "C5": 523.25, "D5": 587.33, "E5": 659.25, "F5": 698.46, "G5": 783.99, "A5": 880.00, "A#5": 932.33, "C6": 1046.50
+                };
+                this.noteIdx = 0;
+            }
+
+            init() {
+                const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+                this.ctx = new AudioContextClass();
+            }
+
+            playMelodyStep() {
+                if (!this.isPlaying || this.isMuted) return;
+
+                const currentNote = this.notes[this.noteIdx];
+                const freq = this.frequencies[currentNote.note];
+                const duration = currentNote.dur * this.beatDuration;
+
+                if (freq) {
+                    this.playBellTone(freq, duration);
+                }
+
+                this.noteIdx = (this.noteIdx + 1) % this.notes.length;
+                this.timerId = setTimeout(() => this.playMelodyStep(), duration * 1000);
+            }
+
+            playBellTone(frequency, duration) {
+                if (!this.ctx) return;
+                
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                
+                osc.type = "sine";
+                osc.frequency.setValueAtTime(frequency, this.ctx.currentTime);
+                
+                const harmonicOsc = this.ctx.createOscillator();
+                const harmonicGain = this.ctx.createGain();
+                harmonicOsc.type = "triangle";
+                harmonicOsc.frequency.setValueAtTime(frequency * 2, this.ctx.currentTime);
+
+                gain.gain.setValueAtTime(0, this.ctx.currentTime);
+                gain.gain.linearRampToValueAtTime(0.24, this.ctx.currentTime + 0.03); 
+                gain.gain.exponentialRampToValueAtTime(0.0001, this.ctx.currentTime + duration - 0.04); 
+
+                harmonicGain.gain.setValueAtTime(0, this.ctx.currentTime);
+                harmonicGain.gain.linearRampToValueAtTime(0.05, this.ctx.currentTime + 0.01);
+                harmonicGain.gain.exponentialRampToValueAtTime(0.0001, this.ctx.currentTime + duration * 0.4);
+
+                osc.connect(gain);
+                harmonicOsc.connect(harmonicGain);
+
+                gain.connect(this.ctx.destination);
+                harmonicGain.connect(this.ctx.destination);
+
+                osc.start();
+                harmonicOsc.start();
+                osc.stop(this.ctx.currentTime + duration);
+                harmonicOsc.stop(this.ctx.currentTime + duration);
+            }
+
+            start() {
+                if (this.isPlaying) return;
+                if (!this.ctx) this.init();
+                this.isPlaying = true;
+                this.noteIdx = 0;
+                this.playMelodyStep();
+            }
+
+            toggleMute() {
+                this.isMuted = !this.isMuted;
+                const btnMute = document.getElementById('btn-mute');
+                if (this.isMuted) {
+                    btnMute.innerHTML = "🔇 Nhạc Tắt";
+                    btnMute.classList.remove('text-rose-700');
+                    btnMute.classList.add('text-rose-400');
+                } else {
+                    btnMute.innerHTML = "🔊 Nhạc Bật";
+                    btnMute.classList.remove('text-rose-400');
+                    btnMute.classList.add('text-rose-700');
+                    if (this.timerId) clearTimeout(this.timerId);
+                    this.playMelodyStep();
+                }
+            }
+        }
+
+        const audioManager = new BirthdayChimesSynth();
+
+        // ==========================================
+        // KHO ẢNH KỶ NIỆM (4 ẢNH CHẶNG ĐƯỜNG LỚN KHÔN)
+        // ==========================================
+        const loader = new THREE.TextureLoader();
+        
+        const photoFiles = [
+    './anh1.jpg', // Đường dẫn tới bức ảnh số 1 đặt cùng thư mục
+    './anh2.jpg', // Đường dẫn tới bức ảnh số 2
+    './anh3.jpg', // Đường dẫn tới bức ảnh số 3
+    './anh4.jpg'  // Đường dẫn tới bức ảnh số 4
+];
+        
+        const photoTextures = [];
+        
+        function createColorFallbackCanvas(color, text) {
+            const canvas = document.createElement('canvas');
+            canvas.width = 256; canvas.height = 256;
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = color;
+            ctx.fillRect(0, 0, 256, 256);
+            ctx.fillStyle = '#FFF5F5';
+            ctx.font = 'bold 20px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillText(text, 128, 140);
+            return new THREE.CanvasTexture(canvas);
+        }
+
+        photoFiles.forEach((fileUrl, i) => {
+            photoTextures[i] = loader.load(fileUrl, undefined, undefined, () => {
+                photoTextures[i] = createColorFallbackCanvas('#F43F5E', `Mốc Kỷ Niệm ${i+1}`);
+            });
+        });
+
+        function createCustomTexture(type) {
+            const canvas = document.createElement('canvas');
+            canvas.width = 128; canvas.height = 128;
+            const ctx = canvas.getContext('2d');
+            const cx = 64, cy = 64;
+
+            if (type === 'pink_glow') {
+                const grd = ctx.createRadialGradient(cx, cy, 0, cx, cy, 40);
+                grd.addColorStop(0, '#FFFFFF'); 
+                grd.addColorStop(0.2, '#FFE4E6'); 
+                grd.addColorStop(0.5, '#E11D48'); 
+                grd.addColorStop(1, 'rgba(0,0,0,0)');
+                ctx.fillStyle = grd; ctx.fillRect(0,0,128,128);
+
+            } else if (type === 'pastel_pink') {
+                const grd = ctx.createRadialGradient(cx, cy, 0, cx, cy, 45);
+                grd.addColorStop(0, '#FFFFFF'); 
+                grd.addColorStop(0.2, '#FFF1F2'); 
+                grd.addColorStop(0.5, '#FDA4AF'); 
+                grd.addColorStop(1, 'rgba(0,0,0,0)');
+                ctx.fillStyle = grd; ctx.fillRect(0,0,128,128);
+
+            } else if (type === 'white_cream') {
+                const grd = ctx.createRadialGradient(cx, cy, 0, cx, cy, 35);
+                grd.addColorStop(0, '#FFFFFF'); 
+                grd.addColorStop(0.5, '#FFF1F2'); 
+                grd.addColorStop(1, 'rgba(0,0,0,0)');
+                ctx.fillStyle = grd; ctx.fillRect(0,0,128,128);
+            }
+            return new THREE.CanvasTexture(canvas);
+        }
+
+        const textures = {
+            pink: createCustomTexture('pink_glow'),
+            pastel: createCustomTexture('pastel_pink'),
+            white: createCustomTexture('white_cream')
+        };
+
+        const CONFIG = {
+            pinkCount: 4200,   
+            flameCount: 1200,  
+            goldCount: 700,    
+            treeHeight: 40,
+            treeBaseRadius: 20
+        };
+
+        let scene, camera, renderer;
+        let groupPink, groupFlame, groupGold; 
+        let photoMeshes = [];    
+        let titleMesh, pathLine, roadRibbonMesh;
+        let stationMeshes = []; 
+        let stationTexActive, stationTexInactive;
+        
+        let state = 'TREE'; 
+        let selectedIndex = 0;
+        let handX = 0.0; // Bắt đầu chuẩn tại Ảnh số 1 (Thuở Nhỏ)
+
+        // HỖ TRỢ ĐIỀU KHIỂN CHẠM TRỰC TIẾP (TOUCH GESTURES) TRÊN DI ĐỘNG
+        let isUserDragging = false;
+        let startTouchX = 0;
+        let startHandX = 0;
+
+        const pathPoints = [
+            new THREE.Vector3(-33, -5, 0), // Trạm 1: Thuở Nhỏ (Sườn xuống thấp bên trái)
+            new THREE.Vector3(-11, 8, 0),  // Trạm 2: Cấp 1 & 2 (CỰC ĐẠI - Đỉnh nhô cao)
+            new THREE.Vector3(11, -8, 0),  // Trạm 3: Cấp 3 (CỰC TIỂU - Điểm trũng thấp)
+            new THREE.Vector3(33, 5, 0)    // Trạm 4: Hiện Tại (Sườn nâng lên bên phải)
+        ];
+        const journeyCurve = new THREE.CatmullRomCurve3(pathPoints);
+
+        const defaultWishes = "🌸 Tuổi 18 - Chúc nâu luôn kiên cường, tràn đầy dũng khí và tự tin sải rộng cánh bay giữa bầu trời xanh thẳm!\n\n✨ Hãy luôn giữ vững nụ cười rạng rỡ và viết nên câu chuyện thanh xuân tuyệt đẹp nhất của cuộc đời mình nhé!";
+        document.getElementById('custom-wish-text').value = defaultWishes;
+
+        let fireworks = [];
+        let isCelebrationActive = false;
+
+        // Tạo chất liệu trạm trực thăng (Helipad) phát sáng
+        function createHelipadTexture(isActive) {
+            const canvas = document.createElement('canvas');
+            canvas.width = 128; canvas.height = 128;
+            const ctx = canvas.getContext('2d');
+            const color = isActive ? '#E11D48' : '#FDA4AF';
+            const innerColor = isActive ? '#FFFFFF' : '#F87171';
+            
+            ctx.clearRect(0, 0, 128, 128);
+            
+            // Vẽ vòng tròn lề phát sáng
+            ctx.strokeStyle = color;
+            ctx.lineWidth = 8;
+            ctx.shadowBlur = isActive ? 12 : 2;
+            ctx.shadowColor = color;
+            ctx.beginPath();
+            ctx.arc(64, 64, 48, 0, Math.PI * 2);
+            ctx.stroke();
+            
+            // Vẽ vòng trong
+            ctx.strokeStyle = innerColor;
+            ctx.lineWidth = 4;
+            ctx.beginPath();
+            ctx.arc(64, 64, 30, 0, Math.PI * 2);
+            ctx.stroke();
+            
+            // Chữ H trung tâm
+            ctx.fillStyle = innerColor;
+            ctx.font = 'bold 36px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText('H', 64, 64);
+            
+            return new THREE.CanvasTexture(canvas);
+        }
+
+        function init3D() {
+            const container = document.getElementById('canvas-container');
+            scene = new THREE.Scene();
+            
+            scene.background = new THREE.Color(0xFFF1F2);
+            scene.fog = new THREE.FogExp2(0xFFF1F2, 0.0035);
+
+            camera = new THREE.PerspectiveCamera(55, window.innerWidth/window.innerHeight, 0.1, 1000);
+            
+            // Tự động kiểm tra tỷ lệ khung hình màn hình khi khởi tạo
+            updateCameraProjection();
+
+            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            container.appendChild(renderer.domElement);
+
+            groupPink = createParticleSystem('pink', CONFIG.pinkCount, 2.3);
+            groupFlame = createParticleSystem('flame', CONFIG.flameCount, 3.0); 
+            groupGold = createParticleSystem('gold', CONFIG.goldCount, 2.5); 
+
+            stationTexActive = createHelipadTexture(true);
+            stationTexInactive = createHelipadTexture(false);
+
+            createRoadRibbonMesh();
+            createPhotos();
+            createDecorations();
+            createStations();
+            
+            // Thiết lập tương tác Touch Drag/Swipe trực tiếp
+            setupTouchInteractions(container);
+            
+            animate();
+        }
+
+        // TỰ ĐỘNG CHỈNH CAMERA CHO THÍCH ỨNG DI ĐỘNG GÓC DỌC (iPHONE 16 PRO)
+        function updateCameraProjection() {
+            if (!camera) return;
+            const aspect = window.innerWidth / window.innerHeight;
+            camera.aspect = aspect;
+            
+            if (aspect < 1.0) {
+                // Màn hình dọc (Điện thoại) -> lùi camera ra xa hơn hoặc mở rộng FOV
+                camera.fov = 68; 
+            } else {
+                // Màn hình ngang (Desktop) -> FOV tiêu chuẩn điện ảnh
+                camera.fov = 55;
+            }
+            camera.updateProjectionMatrix();
+        }
+
+        // TÍNH NĂNG VUỐT CHẠM TƯƠNG TÁC HÀNH TRÌNH (Tối ưu cho người dùng di động)
+        function setupTouchInteractions(container) {
+            // Mouse Events (PC) & Touch Events (Mobile)
+            const handleStart = (clientX) => {
+                if (state === 'EXPLODE' || state === 'PHOTO') {
+                    isUserDragging = true;
+                    startTouchX = clientX;
+                    startHandX = handX;
+                }
+            };
+
+            const handleMove = (clientX) => {
+                if (isUserDragging) {
+                    const deltaX = clientX - startTouchX;
+                    // Chuẩn hóa khoảng kéo tay: vuốt 1 màn hình di chuyển toàn diện
+                    const dragSensitivity = 0.004; 
+                    let nextHandX = startHandX - deltaX * dragSensitivity;
+                    handX = Math.max(0.0, Math.min(1.0, nextHandX));
+                }
+            };
+
+            const handleEnd = () => {
+                isUserDragging = false;
+            };
+
+            container.addEventListener('mousedown', (e) => handleStart(e.clientX));
+            container.addEventListener('mousemove', (e) => handleMove(e.clientX));
+            window.addEventListener('mouseup', handleEnd);
+
+            container.addEventListener('touchstart', (e) => {
+                if (e.touches.length > 0) handleStart(e.touches[0].clientX);
+            }, { passive: true });
+            
+            container.addEventListener('touchmove', (e) => {
+                if (e.touches.length > 0) handleMove(e.touches[0].clientX);
+            }, { passive: true });
+            
+            window.addEventListener('touchend', handleEnd);
+        }
+
+        function launchFirework(x, y, z) {
+            const particleCount = 85;
+            const geometry = new THREE.BufferGeometry();
+            const positions = [];
+            const velocities = [];
+            const colors = [];
+            const color = new THREE.Color();
+            
+            const hues = [0.0, 0.9, 0.15, 0.6, 0.8]; 
+            const chosenHue = hues[Math.floor(Math.random() * hues.length)];
+            color.setHSL(chosenHue, 1.0, 0.65);
+
+            for (let i = 0; i < particleCount; i++) {
+                positions.push(x, y, z);
+                
+                const theta = Math.random() * Math.PI * 2;
+                const phi = Math.acos((Math.random() * 2) - 1);
+                const speed = 0.4 + Math.random() * 1.6;
+                
+                velocities.push(
+                    Math.sin(phi) * Math.cos(theta) * speed,
+                    Math.sin(phi) * Math.sin(theta) * speed,
+                    Math.cos(phi) * speed
+                );
+
+                colors.push(color.r, color.g, color.b);
+            }
+
+            geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+            geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+
+            const material = new THREE.PointsMaterial({
+                size: 1.6,
+                vertexColors: true,
+                transparent: true,
+                opacity: 1.0,
+                blending: THREE.AdditiveBlending,
+                depthWrite: false
+            });
+
+            const points = new THREE.Points(geometry, material);
+            scene.add(points);
+
+            fireworks.push({
+                points: points,
+                velocities: velocities,
+                age: 0,
+                maxAge: 70 + Math.random() * 40
+            });
+        }
+
+        function triggerInitialFireworks() {
+            isCelebrationActive = true;
+            for (let i = 0; i < 6; i++) {
+                setTimeout(() => {
+                    if (scene) {
+                        launchFirework(
+                            (Math.random() - 0.5) * 70, 
+                            15 + Math.random() * 25, 
+                            (Math.random() - 0.5) * 30
+                        );
+                    }
+                }, i * 350);
+            }
+        }
+
+        function get18DigitPosition(index, total) {
+            const hMin = 14, hMax = 25;
+            if (index < total * 0.45) {
+                const subPct = index / (total * 0.45);
+                if (subPct < 0.75) {
+                    const segmentPct = subPct / 0.75;
+                    const x = -6 + (Math.random() - 0.5) * 0.12;
+                    const y = hMin + segmentPct * (hMax - hMin);
+                    const z = (Math.random() - 0.5) * 0.12;
+                    return new THREE.Vector3(x, y, z);
+                } else if (subPct < 0.90) {
+                    const segmentPct = (subPct - 0.75) / 0.15;
+                    const x = -6 - segmentPct * 3.2 + (Math.random() - 0.5) * 0.12;
+                    const y = hMax - segmentPct * 2.5 + (Math.random() - 0.5) * 0.12;
+                    const z = (Math.random() - 0.5) * 0.12;
+                    return new THREE.Vector3(x, y, z);
+                } else {
+                    const segmentPct = (subPct - 0.90) / 0.10;
+                    const x = -8.5 + segmentPct * 5 + (Math.random() - 0.5) * 0.12;
+                    const y = hMin + (Math.random() - 0.5) * 0.12;
+                    const z = (Math.random() - 0.5) * 0.12;
+                    return new THREE.Vector3(x, y, z);
+                }
+            } else {
+                const subPct = (index - total * 0.45) / (total * 0.55);
+                if (subPct < 0.5) {
+                    const circlePct = subPct / 0.5;
+                    const angle = circlePct * Math.PI * 2;
+                    const r = 4.1 + (Math.random() - 0.5) * 0.1;
+                    const x = 5.2 + Math.cos(angle) * r;
+                    const y = 17.6 + Math.sin(angle) * r;
+                    const z = (Math.random() - 0.5) * 0.1;
+                    return new THREE.Vector3(x, y, z);
+                } else {
+                    const circlePct = (subPct - 0.5) / 0.5;
+                    const angle = circlePct * Math.PI * 2;
+                    const r = 3.1 + (Math.random() - 0.5) * 0.1;
+                    const x = 5.2 + Math.cos(angle) * r;
+                    const y = 23.0 + Math.sin(angle) * r;
+                    const z = (Math.random() - 0.5) * 0.1;
+                    return new THREE.Vector3(x, y, z);
+                }
+            }
+        }
+
+        function createParticleSystem(type, count, size) {
+            const pPositions = [];
+            const pExplodeTargets = []; 
+            const pTreeTargets = [];    
+            const pHeartTargets = [];   
+            const sizes = []; 
+            const phases = []; 
+            
+            for(let i=0; i<count; i++) {
+                // --- BÁNH KEM 3D ---
+                let tx, ty, tz;
+                if (type === 'flame') {
+                    const pos = get18DigitPosition(i, count);
+                    tx = pos.x; ty = pos.y; tz = pos.z;
+                } else {
+                    const layer = Math.floor(Math.random() * 3);
+                    let baseRadius, heightOffset, layerHeight;
+                    
+                    if (layer === 0) {
+                        baseRadius = CONFIG.treeBaseRadius;
+                        heightOffset = -14;
+                        layerHeight = 8;
+                    } else if (layer === 1) {
+                        baseRadius = CONFIG.treeBaseRadius * 0.75;
+                        heightOffset = -5;
+                        layerHeight = 8;
+                    } else {
+                        baseRadius = CONFIG.treeBaseRadius * 0.50;
+                        heightOffset = 4;
+                        layerHeight = 8;
+                    }
+
+                    const h = Math.random() * layerHeight;
+                    ty = h + heightOffset;
+                    
+                    let radiusRatio = (type === 'pink') ? Math.sqrt(Math.random()) : 0.94 + Math.random() * 0.06;
+                    const r = baseRadius * radiusRatio;
+                    const theta = Math.random() * Math.PI * 2;
+                    tx = r * Math.cos(theta);
+                    tz = r * Math.sin(theta);
+                }
+                pTreeTargets.push(tx, ty, tz);
+
+                // Hạt trải dọc đường hành trình phẳng Đồ thị Bậc 3
+                const pathPct = i / count;
+                const pathPos = journeyCurve.getPointAt(pathPct);
+                
+                const spreadX = (Math.random() - 0.5) * 2;
+                const spreadY = (Math.random() - 0.5) * 1.0;
+                const spreadZ = 0; 
+                pExplodeTargets.push(pathPos.x + spreadX, pathPos.y + spreadY, spreadZ);
+
+                // --- TRÁI TIM YÊU THƯƠNG ---
+                const tHeart = Math.random() * Math.PI * 2;
+                let hx = 16 * Math.pow(Math.sin(tHeart), 3);
+                let hy = 13 * Math.cos(tHeart) - 5 * Math.cos(2*tHeart) - 2 * Math.cos(3*tHeart) - Math.cos(4*tHeart);
+                
+                const rFill = Math.pow(Math.random(), 0.35); 
+                hx *= rFill; hy *= rFill;
+                let hz = (Math.random() - 0.5) * 6 * rFill; 
+                
+                const noise = 0.8;
+                hx += (Math.random() - 0.5) * noise;
+                hy += (Math.random() - 0.5) * noise;
+                hz += (Math.random() - 0.5) * noise;
+
+                const scaleH = 2.0;
+                pHeartTargets.push(hx * scaleH, hy * scaleH + 4, hz); 
+
+                // --- KHỞI CHẠY ---
+                pPositions.push(tx, ty, tz);
+                sizes.push(size);
+                phases.push(Math.random() * Math.PI * 2);
+            }
+
+            const geo = new THREE.BufferGeometry();
+            geo.setAttribute('position', new THREE.Float32BufferAttribute(pPositions, 3));
+            geo.setAttribute('size', new THREE.Float32BufferAttribute(sizes, 1));
+            
+            // Phối màu hạt bánh kem hồng sọc kem chéo trắng
+            const colors = new Float32Array(count * 3);
+            const pinkColor = new THREE.Color(0xE11D48);  
+            const whiteColor = new THREE.Color(0xFFFFFF); 
+            const flameColor = new THREE.Color(0xFFB7C5); // Hồng nhạt thơ mộng cho nến số 18
+
+            for(let i=0; i<count; i++) {
+                if (type === 'flame') {
+                    colors[i*3] = flameColor.r;
+                    colors[i*3+1] = flameColor.g;
+                    colors[i*3+2] = flameColor.b;
+                } else {
+                    const tx = pTreeTargets[i*3];
+                    const ty = pTreeTargets[i*3+1];
+                    const angle = Math.atan2(pTreeTargets[i*3+2], tx);
+                    const isStripe = Math.sin(angle * 3.5 + ty * 0.45) > 0.45;
+
+                    if (isStripe) {
+                        colors[i*3] = whiteColor.r;
+                        colors[i*3+1] = whiteColor.g;
+                        colors[i*3+2] = whiteColor.b;
+                    } else {
+                        colors[i*3] = pinkColor.r;
+                        colors[i*3+1] = pinkColor.g;
+                        colors[i*3+2] = pinkColor.b;
+                    }
+                }
+            }
+            geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+            
+            geo.userData = { 
+                tree: pTreeTargets, explode: pExplodeTargets, heart: pHeartTargets, 
+                phases: phases, pinkColor: pinkColor, whiteColor: whiteColor, flameColor: flameColor, baseSize: size
+            };
+
+            const mat = new THREE.PointsMaterial({
+                size: size,
+                map: (type === 'flame') ? textures.pastel : (type === 'gold' ? textures.white : textures.pink),
+                transparent: true, 
+                opacity: 0.95,
+                vertexColors: true, 
+                blending: THREE.NormalBlending, 
+                depthWrite: false,
+                sizeAttenuation: true
+            });
+
+            const points = new THREE.Points(geo, mat);
+            scene.add(points);
+            return points;
+        }
+
+        function createRoadRibbonMesh() {
+            const points = journeyCurve.getPoints(120);
+            const vertices = [];
+            const colors = [];
+            const indices = [];
+            const width = 2.4; 
+            
+            const leftPoints = [];
+            const rightPoints = [];
+            
+            for (let i = 0; i < points.length; i++) {
+                const p = points[i];
+                let tangent;
+                if (i < points.length - 1) {
+                    tangent = new THREE.Vector3().subVectors(points[i+1], p).normalize();
+                } else {
+                    tangent = new THREE.Vector3().subVectors(p, points[i-1]).normalize();
+                }
+                const normal = new THREE.Vector3(-tangent.y, tangent.x, 0).normalize();
+                
+                leftPoints.push(new THREE.Vector3().addVectors(p, normal.clone().multiplyScalar(width)));
+                rightPoints.push(new THREE.Vector3().addVectors(p, normal.clone().multiplyScalar(-width)));
+            }
+            
+            for (let i = 0; i < points.length; i++) {
+                const lp = leftPoints[i];
+                const rp = rightPoints[i];
+                
+                vertices.push(lp.x, lp.y, lp.z);
+                vertices.push(rp.x, rp.y, rp.z);
+                
+                // Sử dụng tông màu hồng phấn thanh lịch, nhạt hơn trước 40%
+                const pathColor = new THREE.Color(0xFFE4E6);
+                colors.push(pathColor.r, pathColor.g, pathColor.b);
+                colors.push(pathColor.r, pathColor.g, pathColor.b);
+                
+                if (i < points.length - 1) {
+                    const currL = 2 * i;
+                    const currR = 2 * i + 1;
+                    const nextL = 2 * (i + 1);
+                    const nextR = 2 * (i + 1) + 1;
+                    
+                    indices.push(currL, currR, nextL);
+                    indices.push(currR, nextR, nextL);
+                }
+            }
+            
+            const roadGeo = new THREE.BufferGeometry();
+            roadGeo.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+            roadGeo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+            roadGeo.setIndex(indices);
+            
+            const roadMat = new THREE.MeshBasicMaterial({
+                vertexColors: true,
+                side: THREE.DoubleSide,
+                transparent: true,
+                opacity: 0.0
+            });
+            roadRibbonMesh = new THREE.Mesh(roadGeo, roadMat);
+            scene.add(roadRibbonMesh);
+        }
+
+        function createPhotos() {
+            const geo = new THREE.PlaneGeometry(9.5, 9.5);
+            const borderGeo = new THREE.PlaneGeometry(10.1, 10.1); 
+            const borderMat = new THREE.MeshBasicMaterial({ color: 0xE11D48 }); 
+
+            // Phân bổ chính xác 4 bức ảnh tại 4 cột mốc (đầu, cực đại, cực tiểu, cuối)
+            const trackFractions = [0.0, 0.333, 0.666, 1.0];
+
+            for(let i=0; i<4; i++) { 
+                const mat = new THREE.MeshBasicMaterial({ map: photoTextures[i], side: THREE.DoubleSide, transparent: true, opacity: 0.98 });
+                const mesh = new THREE.Mesh(geo, mat);
+                const border = new THREE.Mesh(borderGeo, borderMat);
+                border.position.z = -0.05; 
+                mesh.add(border);
+                
+                const pos = journeyCurve.getPointAt(trackFractions[i]);
+                mesh.position.set(pos.x, pos.y + 7.5, 1.5); 
+                mesh.visible = false; 
+                mesh.scale.set(0,0,0);
+                scene.add(mesh);
+                photoMeshes.push(mesh);
+            }
+        }
+
+        function createStations() {
+            const stationGeo = new THREE.PlaneGeometry(6.5, 6.5);
+            const beamGeo = new THREE.CylinderGeometry(0.2, 0.2, 9.0, 8, 1, true);
+            const beamMat = new THREE.MeshBasicMaterial({
+                color: 0xE11D48,
+                transparent: true,
+                opacity: 0.15,
+                blending: THREE.AdditiveBlending,
+                side: THREE.DoubleSide
+            });
+
+            const trackFractions = [0.0, 0.333, 0.666, 1.0];
+
+            for (let i = 0; i < 4; i++) {
+                const mat = new THREE.MeshBasicMaterial({
+                    map: stationTexInactive,
+                    transparent: true,
+                    opacity: 0.4,
+                    side: THREE.DoubleSide
+                });
+                const stationMesh = new THREE.Mesh(stationGeo, mat);
+                const pos = journeyCurve.getPointAt(trackFractions[i]);
+                
+                stationMesh.position.set(pos.x, pos.y - 2.0, 0.5);
+                stationMesh.rotation.x = -Math.PI / 4; 
+                stationMesh.visible = false;
+                
+                const beam = new THREE.Mesh(beamGeo, beamMat.clone());
+                beam.position.set(0, 5.0, -2.5); 
+                beam.rotation.x = Math.PI / 4; 
+                stationMesh.add(beam);
+                stationMesh.userData = { beam: beam };
+
+                scene.add(stationMesh);
+                stationMeshes.push(stationMesh);
+            }
+        }
+
+        function createDecorations() {
+            const canvas = document.createElement('canvas');
+            canvas.width = 1024; canvas.height = 256;
+            const ctx = canvas.getContext('2d');
+            ctx.font = 'bold italic 85px "Georgia", serif';
+            ctx.fillStyle = '#BE123C'; ctx.textAlign = 'center';
+            ctx.shadowColor = "#F43F5E"; ctx.shadowBlur = 20; 
+            ctx.fillText("HAPPY 18TH BIRTHDAY", 512, 140);
+            
+            const tex = new THREE.CanvasTexture(canvas);
+            const mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, blending: THREE.AdditiveBlending });
+            titleMesh = new THREE.Mesh(new THREE.PlaneGeometry(55, 14), mat);
+            titleMesh.position.set(0, 36, 0);
+            scene.add(titleMesh);
+
+            const points = journeyCurve.getPoints(100);
+            const pathGeo = new THREE.BufferGeometry().setFromPoints(points);
+            
+            // Đường line lõi trung tâm của con đường (màu nhạt hơn trước 40% để thanh thoát dịu mắt)
+            const pathMat = new THREE.LineBasicMaterial({ 
+                color: 0xFDA4AF, 
+                linewidth: 5,
+                transparent: true,
+                opacity: 0
+            });
+            pathLine = new THREE.Line(pathGeo, pathMat);
+            scene.add(pathLine);
+        }
+
+        function updateParticleGroup(group, type, targetState, speed, handRotY, time) {
+            const positions = group.geometry.attributes.position.array;
+            const sizes = group.geometry.attributes.size.array;
+            const colors = group.geometry.attributes.color.array;
+            const phases = group.geometry.userData.phases;
+            const baseSize = group.geometry.userData.baseSize;
+            
+            const targetKey = (targetState === 'TREE') ? 'tree' : (targetState === 'HEART' ? 'heart' : 'explode');
+            const targets = group.geometry.userData[(targetState === 'PHOTO') ? 'explode' : targetKey];
+
+            for(let i=0; i<positions.length; i++) {
+                positions[i] += (targets[i] - positions[i]) * speed;
+            }
+            group.geometry.attributes.position.needsUpdate = true;
+            
+            const count = positions.length / 3;
+            
+            if (targetState === 'TREE') {
+                group.rotation.y += 0.0045;
+                group.rotation.x = 0;
+                group.rotation.z = 0;
+                
+                for(let i=0; i<count; i++) {
+                    sizes[i] = baseSize;
+                    let brightness = 0.85 + 0.15 * Math.sin(time * 6 + phases[i]);
+                    
+                    if(type === 'flame') {
+                        brightness = 0.7 + 0.3 * Math.sin(time * 16 + phases[i]);
+                    }
+                    
+                    const tx = targets[i*3];
+                    const ty = targets[i*3+1];
+                    const angle = Math.atan2(targets[i*3+2], tx);
+                    const isStripe = Math.sin(angle * 3.5 + ty * 0.45) > 0.45;
+
+                    if (type === 'flame') {
+                        colors[i*3]   = group.geometry.userData.flameColor.r * brightness;
+                        colors[i*3+1] = group.geometry.userData.flameColor.g * brightness;
+                        colors[i*3+2] = group.geometry.userData.flameColor.b * brightness;
+                    } else if (isStripe) {
+                        colors[i*3]   = group.geometry.userData.whiteColor.r * brightness;
+                        colors[i*3+1] = group.geometry.userData.whiteColor.g * brightness;
+                        colors[i*3+2] = group.geometry.userData.whiteColor.b * brightness;
+                    } else {
+                        colors[i*3]   = group.geometry.userData.pinkColor.r * brightness;
+                        colors[i*3+1] = group.geometry.userData.pinkColor.g * brightness;
+                        colors[i*3+2] = group.geometry.userData.pinkColor.b * brightness;
+                    }
+                }
+                group.geometry.attributes.color.needsUpdate = true;
+                group.geometry.attributes.size.needsUpdate = true;
+
+            } else if (targetState === 'HEART') {
+                group.rotation.y = 0;
+                group.rotation.x = 0;
+                group.rotation.z = 0;
+                const beatScale = 1.0 + Math.abs(Math.sin(time * 3.6)) * 0.1;
+                group.scale.set(beatScale, beatScale, beatScale);
+
+                const loveColor = new THREE.Color(0xF43F5E);
+                for(let i=0; i<count; i++) {
+                    colors[i*3] = loveColor.r; colors[i*3+1] = loveColor.g; colors[i*3+2] = loveColor.b;
+                    if (i % 2 === 0) sizes[i] = baseSize;
+                    else sizes[i] = 0; 
+                }
+                group.geometry.attributes.color.needsUpdate = true;
+                group.geometry.attributes.size.needsUpdate = true;
+
+            } else {
+                group.scale.set(1,1,1);
+                group.rotation.y = 0;
+                group.rotation.x = 0;
+                group.rotation.z = 0;
+
+                const roadColor = new THREE.Color(0xE11D48);
+                for(let i=0; i<count; i++) {
+                    sizes[i] = baseSize * 1.1;
+                    let brightness = 0.8 + 0.2 * Math.sin(time * 12 + phases[i]);
+                    colors[i*3]   = roadColor.r * brightness;
+                    colors[i*3+1] = roadColor.g * brightness;
+                    colors[i*3+2] = roadColor.b * brightness;
+                }
+                group.geometry.attributes.size.needsUpdate = true;
+                group.geometry.attributes.color.needsUpdate = true;
+            }
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            const time = Date.now() * 0.001;
+            const speed = 0.08;
+
+            updateParticleGroup(groupPink, 'pink', state, speed, 0, time);
+            updateParticleGroup(groupFlame, 'flame', state, speed, 0, time);
+            updateParticleGroup(groupGold, 'gold', state, speed, 0, time);
+
+            // Pháo hoa sinh nhật
+            if (fireworks.length > 0) {
+                for (let i = fireworks.length - 1; i >= 0; i--) {
+                    const fw = fireworks[i];
+                    const posAttr = fw.points.geometry.attributes.position;
+                    const arr = posAttr.array;
+                    
+                    fw.age++;
+                    
+                    for (let j = 0; j < arr.length / 3; j++) {
+                        arr[j*3] += fw.velocities[j*3] * 0.45;
+                        arr[j*3+1] += fw.velocities[j*3+1] * 0.45 - 0.012; 
+                        arr[j*3+2] += fw.velocities[j*3+2] * 0.45;
+                    }
+                    posAttr.needsUpdate = true;
+                    
+                    fw.points.material.opacity = 1.0 - (fw.age / fw.maxAge);
+                    
+                    if (fw.age >= fw.maxAge) {
+                        scene.remove(fw.points);
+                        fw.points.geometry.dispose();
+                        fw.points.material.dispose();
+                        fireworks.splice(i, 1);
+                    }
+                }
+            }
+
+            if (isCelebrationActive && Math.random() < 0.015 && fireworks.length < 12) {
+                launchFirework(
+                    (Math.random() - 0.5) * 80, 
+                    -5 + Math.random() * 35, 
+                    (Math.random() - 0.5) * 20
+                );
+            }
+
+            // Tính toán cột mốc ảnh hiện tại bám theo tay hoặc vuốt kéo di chuyển
+            const activeIndex = Math.min(3, Math.floor(handX * 3.99));
+
+            stationMeshes.forEach((station, i) => {
+                const visible = (state === 'EXPLODE' || state === 'PHOTO');
+                station.visible = visible;
+                
+                if (visible) {
+                    if (i === activeIndex) {
+                        station.material.map = stationTexActive;
+                        station.material.opacity = 1.0;
+                        station.scale.lerp(new THREE.Vector3(1.15, 1.15, 1.15), 0.1);
+                        if (station.userData.beam) {
+                            station.userData.beam.material.opacity = 0.45 + 0.15 * Math.sin(time * 12);
+                            station.userData.beam.material.color.setHex(0xE11D48); 
+                        }
+                    } else {
+                        station.material.map = stationTexInactive;
+                        station.material.opacity = 0.45;
+                        station.scale.lerp(new THREE.Vector3(0.9, 0.9, 0.9), 0.1);
+                        if (station.userData.beam) {
+                            station.userData.beam.material.opacity = 0.1;
+                            station.userData.beam.material.color.setHex(0xFDA4AF); 
+                        }
+                    }
+                }
+            });
+
+            // TỐI ƯU TOÀN DIỆN VỊ TRÍ CAMERA THÍCH ỨNG CHO MOBILE LẪN PC
+            const isMobile = window.innerWidth < window.innerHeight;
+
+            if (state === 'TREE') {
+                titleMesh.visible = true; 
+                titleMesh.scale.lerp(new THREE.Vector3(1,1,1), 0.1);
+                pathLine.material.opacity = Math.max(0, pathLine.material.opacity - 0.05);
+                if (roadRibbonMesh) roadRibbonMesh.material.opacity = Math.max(0, roadRibbonMesh.material.opacity - 0.05);
+                photoMeshes.forEach(m => { m.scale.lerp(new THREE.Vector3(0,0,0), 0.1); m.visible = false; });
+                
+                // Trực quan hóa Bánh sinh nhật: Màn hình dọc mobile lùi camera ra xa hơn (140) để vừa vặn chiều cao
+                const targetZ = isMobile ? 140 : 110;
+                const targetY = isMobile ? 18 : 15;
+                camera.position.lerp(new THREE.Vector3(0, targetY, targetZ), 0.07);
+                camera.lookAt(0, 5, 0);
+
+            } else if (state === 'HEART') {
+                titleMesh.visible = false; 
+                pathLine.material.opacity = Math.max(0, pathLine.material.opacity - 0.05);
+                if (roadRibbonMesh) roadRibbonMesh.material.opacity = Math.max(0, roadRibbonMesh.material.opacity - 0.05);
+                photoMeshes.forEach(m => { m.visible = false; });
+                
+                const targetZ = isMobile ? 120 : 95;
+                camera.position.lerp(new THREE.Vector3(0, 5, targetZ), 0.07);
+                camera.lookAt(0, 3, 0);
+
+            } else if (state === 'EXPLODE') {
+                titleMesh.visible = false; 
+                pathLine.material.opacity = Math.min(1.0, pathLine.material.opacity + 0.05);
+                if (roadRibbonMesh) roadRibbonMesh.material.opacity = Math.min(0.85, roadRibbonMesh.material.opacity + 0.05);
+                
+                // Trượt máy quay mượt mà dọc theo đồ thị hàm số bậc 3 uốn lượn
+                const targetCameraX = (handX - 0.5) * 64;
+                const pathPos = journeyCurve.getPointAt(handX);
+                
+                const targetZ = isMobile ? 110 : 85;
+                const targetYOffset = isMobile ? 9.0 : 6.0;
+                
+                camera.position.lerp(new THREE.Vector3(targetCameraX, pathPos.y + targetYOffset, targetZ), 0.08);
+                camera.lookAt(targetCameraX, pathPos.y, 0);
+
+                document.getElementById('timeline-slider').value = handX;
+
+                const trackFractions = [0.0, 0.333, 0.666, 1.0];
+                photoMeshes.forEach((mesh, i) => {
+                    mesh.visible = true;
+                    mesh.rotation.set(0, 0, 0);
+                    const pos = journeyCurve.getPointAt(trackFractions[i]);
+                    mesh.position.set(pos.x, pos.y + 7.5, 1.5);
+
+                    if (i === activeIndex) {
+                        mesh.scale.lerp(new THREE.Vector3(1.6, 1.6, 1.6), 0.12);
+                    } else {
+                        mesh.scale.lerp(new THREE.Vector3(0.9, 0.9, 0.9), 0.12);
+                    }
+                });
+
+            } else if (state === 'PHOTO') {
+                titleMesh.visible = false;
+                pathLine.material.opacity = Math.min(1.0, pathLine.material.opacity + 0.05);
+                if (roadRibbonMesh) roadRibbonMesh.material.opacity = Math.min(0.85, roadRibbonMesh.material.opacity + 0.05);
+
+                const currentPhotoPos = journeyCurve.getPointAt(trackFractions[activeIndex]);
+                const targetZ = isMobile ? 90 : 65;
+                camera.position.lerp(new THREE.Vector3(currentPhotoPos.x, currentPhotoPos.y + 3.0, targetZ), 0.08);
+                camera.lookAt(currentPhotoPos.x, currentPhotoPos.y + 3.0, 0);
+
+                photoMeshes.forEach((mesh, i) => {
+                    if (i === activeIndex) {
+                        mesh.visible = true;
+                        mesh.position.lerp(new THREE.Vector3(currentPhotoPos.x, currentPhotoPos.y + 3.0, 15), 0.12);
+                        // Trên di động thu nhỏ ảnh phóng đại một chút để cân đối
+                        const scaleFactor = isMobile ? 2.5 : 3.2;
+                        mesh.scale.lerp(new THREE.Vector3(scaleFactor, scaleFactor, scaleFactor), 0.12);
+                        mesh.rotation.set(0, 0, 0);
+                    } else {
+                        mesh.scale.lerp(new THREE.Vector3(0,0,0), 0.15);
+                        setTimeout(() => { if (state !== 'EXPLODE') mesh.visible = false; }, 150);
+                    }
+                });
+            }
+            renderer.render(scene, camera);
+        }
+
+        const trackFractions = [0.0, 0.333, 0.666, 1.0];
+
+        function setManualState(targetState) {
+            if (state === targetState) return; 
+
+            state = targetState;
+            updateActiveStateUI(targetState);
+            
+            const wishesOverlay = document.getElementById('wishes-overlay');
+            const wishesCard = document.getElementById('wishes-card');
+            if (targetState === 'HEART') {
+                wishesOverlay.classList.remove('pointer-events-none');
+                wishesOverlay.classList.add('opacity-100');
+                wishesCard.classList.remove('translate-y-4');
+                wishesCard.classList.add('translate-y-0');
+            } else {
+                wishesOverlay.classList.add('pointer-events-none');
+                wishesOverlay.classList.remove('opacity-100');
+                wishesCard.classList.add('translate-y-4');
+                wishesCard.classList.add('translate-y-0');
+            }
+
+            const sliderContainer = document.getElementById('timeline-slider-container');
+            if (targetState === 'EXPLODE' || targetState === 'PHOTO') {
+                sliderContainer.classList.remove('opacity-40', 'pointer-events-none');
+            } else {
+                sliderContainer.classList.add('opacity-40', 'pointer-events-none');
+            }
+
+            const buttons = ['TREE', 'HEART', 'EXPLODE', 'PHOTO'];
+            buttons.forEach(btn => {
+                const element = document.getElementById(`btn-manual-${btn.toLowerCase()}`);
+                if (btn === targetState) {
+                    element.className = "py-2.5 rounded-xl text-[11px] md:text-xs font-bold bg-rose-600 text-white shadow-md transition-all active:scale-95";
+                } else {
+                    element.className = "py-2.5 rounded-xl text-[11px] md:text-xs font-bold bg-white border border-rose-200 text-rose-700 hover:bg-rose-100/50 transition-all active:scale-95";
+                }
+            });
+        }
+
+        function handleSliderChange(val) {
+            handX = parseFloat(val);
+        }
+
+        function updateActiveStateUI(currentState) {
+            const labels = {
+                'TREE': '🎂 BÁNH KEM NẾN 18 TUỔI',
+                'HEART': '💝 LỜI CHÚC TƯƠNG LAI',
+                'EXPLODE': '🛣️ HÀNH TRÌNH TUỔI 18',
+                'PHOTO': '🖼️ KHUNG HÌNH KỶ NIỆM'
+            };
+            const element = document.getElementById('active-state-indicator');
+            if (element) element.innerText = labels[currentState] || currentState;
+        }
+
+        function toggleMusicVolume() {
+            audioManager.toggleMute();
+        }
+
+        function startSystem() {
+            document.getElementById('start-overlay').classList.add('opacity-0');
+            setTimeout(() => {
+                document.getElementById('start-overlay').style.display = 'none';
+            }, 500);
+
+            audioManager.start();
+            init3D();
+            setManualState('TREE');
+
+            triggerInitialFireworks();
+
+            const video = document.getElementsByClassName('input_video')[0];
+            const canvas = document.getElementById('camera-preview');
+            const ctx = canvas.getContext('2d');
+            const badge = document.getElementById('camera-badge');
+            const badgeDot = document.getElementById('camera-status-dot');
+            const badgeText = document.getElementById('camera-status-text');
+
+            const hands = new Hands({
+                locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+            });
+
+            // TỐI ƯU HÓA confidence tối thiểu: giảm xuống 0.48 giúp duy trì nhận diện mượt mà không đứt gãy
+            hands.setOptions({
+                maxNumHands: 2,
+                modelComplexity: 1,
+                minDetectionConfidence: 0.48,
+                minTrackingConfidence: 0.48
+            });
+
+            hands.onResults(results => {
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                ctx.drawImage(results.image, 0, 0, canvas.width, canvas.height);
+
+                if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+                    badgeDot.className = "w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse";
+                    badgeText.innerText = "SẴN SÀNG";
+                    badge.className = "absolute bottom-2 left-2 px-1.5 py-0.5 rounded text-[8px] font-bold bg-white/95 text-emerald-600 flex items-center gap-1 shadow-sm border border-rose-101";
+
+                    // Nhận diện 2 tay tạo hình trái tim nhanh nhạy
+                    if (results.multiHandLandmarks.length === 2) {
+                        const h1 = results.multiHandLandmarks[0]; 
+                        const h2 = results.multiHandLandmarks[1];
+                        const distIndex = Math.hypot(h1[8].x - h2[8].x, h1[8].y - h2[8].y);
+                        const distThumb = Math.hypot(h1[4].x - h2[4].x, h1[4].y - h2[4].y);
+                        
+                        // Nới rộng khoảng cách nhận diện trái tim lên 0.18 cho dễ trúng
+                        if (distIndex < 0.18 && distThumb < 0.18) {
+                            setManualState('HEART');
+                            return;
+                        }
+                    }
+
+                    const lm = results.multiHandLandmarks[0];
+                    const rawX = 1.0 - lm[9].x; // Lật lại tọa độ khớp hướng webcam phản chiếu
+                    
+                    // TĂNG 30% ĐỘ NHẠY bằng cách nới rộng hệ số activeRangeFactor từ 1.35 lên 1.75
+                    const activeRangeFactor = 1.75; 
+                    let scaledX = (rawX - 0.5) * activeRangeFactor + 0.5;
+                    const clampedX = Math.max(0.0, Math.min(1.0, scaledX));
+
+                    if (state === 'EXPLODE' || state === 'PHOTO') {
+                        // Tăng tốc độ bám đuổi (Damping factor từ 0.15 lên 0.28) - Giúp camera đuổi theo tay lập tức
+                        handX = handX + (clampedX - handX) * 0.28; 
+                    }
+                    
+                    const tips = [8,12,16,20]; 
+                    const wrist = lm[0];
+                    let openDist = 0; 
+                    tips.forEach(i => openDist += Math.hypot(lm[i].x-wrist.x, lm[i].y-wrist.y));
+                    
+                    const avgDist = openDist / 4;
+                    const pinchDist = Math.hypot(lm[4].x-lm[8].x, lm[4].y-lm[8].y);
+
+                    // Tối ưu hóa các mốc ranh giới cử chỉ
+                    if (avgDist < 0.24) { 
+                        // Fist (Nắm tay) nhạy hơn, dễ nắm giữ
+                        setManualState('TREE'); 
+                    } else if (pinchDist < 0.06) {
+                        // Pinch (Nhúm tay) nới rộng lên 0.06 giúp phóng ảnh dễ hơn
+                        setManualState('PHOTO'); 
+                    } else {
+                        // Open (Xoè tay) mở rộng hành trình
+                        setManualState('EXPLODE'); 
+                    }
+                } else {
+                    badgeDot.className = "w-1.5 h-1.5 rounded-full bg-rose-500 animate-ping";
+                    badgeText.innerText = "CAMERA TẮT";
+                    badge.className = "absolute bottom-2 left-2 px-1.5 py-0.5 rounded text-[8px] font-bold bg-white/95 text-rose-500 flex items-center gap-1 shadow-sm border border-rose-101";
+                }
+            });
+
+            const cameraUtils = new Camera(video, {
+                onFrame: async () => { 
+                    try {
+                        await hands.send({image: video}); 
+                    } catch(err) {}
+                }, 
+                width: 320, 
+                height: 240
+            });
+            cameraUtils.start().catch(() => {
+                console.log("Webcam bận hoặc không khả dụng. Bạn có thể tương tác trực tiếp bằng bảng điều khiển hoặc vuốt màn hình.");
+            });
+        }
+
+        window.addEventListener('resize', () => {
+            if(camera && renderer) { 
+                updateCameraProjection();
+                renderer.setSize(window.innerWidth, window.innerHeight); 
+            }
+        });
+    </script>
+</body>
+</html>
